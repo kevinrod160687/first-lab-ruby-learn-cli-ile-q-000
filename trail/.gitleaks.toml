@@ -1,0 +1,14 @@
+title = "Trail"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Docs and tests name the secret variables and use synthetic tokens. They are not credentials."
+paths = [
+    '''trail/docs/.*''',
+    '''trail/README\.md''',
+    '''trail/CODEOWNERS''',
+    '''.*Test\.kt''',
+    '''\.github/workflows/trail\.yml''',
+]
