@@ -47,16 +47,19 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install SDK packages
-        working-directory: ${{ github.workspace }}
-        run: |
-          sdkmanager --install "platforms;android-37.2" "build-tools;37.0.0"
-          yes | sdkmanager --licenses >/dev/null || true
+        uses: android-actions/setup-android@v4
+        with:
+          # v3 still asks sdkmanager for the removed "tools" package and fails.
+          packages: platforms;android-37.2 build-tools;37.0.0
 
       - name: Point Gradle at the SDK
-        run: printf 'sdk.dir=%s\n' "$ANDROID_SDK_ROOT" > local.properties
+        run: |
+          sdk="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          if [ -z "$sdk" ]; then
+            echo "Android SDK location was not set."
+            exit 1
+          fi
+          printf 'sdk.dir=%s\n' "$sdk" > local.properties
 
       - name: Unit tests, lint, detekt, debug APK
         run: ./gradlew :core:test :app:testDebugUnitTest :app:lintDebug detekt :app:assembleDebug --stacktrace
@@ -114,16 +117,19 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Install SDK packages
-        working-directory: ${{ github.workspace }}
-        run: |
-          sdkmanager --install "platforms;android-37.2" "build-tools;37.0.0"
-          yes | sdkmanager --licenses >/dev/null || true
+        uses: android-actions/setup-android@v4
+        with:
+          # v3 still asks sdkmanager for the removed "tools" package and fails.
+          packages: platforms;android-37.2 build-tools;37.0.0
 
       - name: Point Gradle at the SDK
-        run: printf 'sdk.dir=%s\n' "$ANDROID_SDK_ROOT" > local.properties
+        run: |
+          sdk="${ANDROID_SDK_ROOT:-$ANDROID_HOME}"
+          if [ -z "$sdk" ]; then
+            echo "Android SDK location was not set."
+            exit 1
+          fi
+          printf 'sdk.dir=%s\n' "$sdk" > local.properties
 
       - name: Decode release keystore
         working-directory: ${{ github.workspace }}
