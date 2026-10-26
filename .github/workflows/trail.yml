@@ -1,0 +1,153 @@
+name: Trail
+
+on:
+  pull_request:
+    paths:
+      - "trail/**"
+      - ".github/workflows/trail.yml"
+      - ".github/CODEOWNERS"
+  push:
+    branches:
+      - master
+    tags:
+      - "trail-v*"
+    paths:
+      - "trail/**"
+      - ".github/workflows/trail.yml"
+      - ".github/CODEOWNERS"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trail-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Build, test, lint, scan
+    if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: trail
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages
+        working-directory: ${{ github.workspace }}
+        run: |
+          sdkmanager --install "platforms;android-37.2" "build-tools;37.0.0"
+          yes | sdkmanager --licenses >/dev/null || true
+
+      - name: Point Gradle at the SDK
+        run: printf 'sdk.dir=%s\n' "$ANDROID_SDK_ROOT" > local.properties
+
+      - name: Unit tests, lint, detekt, debug APK
+        run: ./gradlew :core:test :app:testDebugUnitTest :app:lintDebug detekt :app:assembleDebug --stacktrace
+
+      - name: Dependency SBOM
+        run: ./gradlew cyclonedxBom --stacktrace
+
+      - name: Install Trivy
+        working-directory: ${{ github.workspace }}
+        run: |
+          curl -sSfL -o trivy.tar.gz "https://github.com/aquasecurity/trivy/releases/download/v0.76.1/trivy_0.76.1_Linux-64bit.tar.gz"
+          tar -xzf trivy.tar.gz trivy
+          sudo mv trivy /usr/local/bin/trivy
+
+      - name: Scan dependencies
+        working-directory: ${{ github.workspace }}
+        run: trivy sbom --severity HIGH,CRITICAL --exit-code 1 --ignore-unfixed trail/build/reports/cyclonedx/bom.json
+
+      - name: Install gitleaks
+        working-directory: ${{ github.workspace }}
+        run: |
+          curl -sSfL -o gitleaks.tar.gz "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz"
+          tar -xzf gitleaks.tar.gz gitleaks
+          sudo mv gitleaks /usr/local/bin/gitleaks
+
+      - name: Secret scan
+        working-directory: ${{ github.workspace }}
+        run: gitleaks detect --source . --config trail/.gitleaks.toml --redact --verbose
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: trail-debug-apk
+          path: trail/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+  release:
+    name: Signed release APK
+    if: startsWith(github.ref, 'refs/tags/trail-v')
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: trail
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install SDK packages
+        working-directory: ${{ github.workspace }}
+        run: |
+          sdkmanager --install "platforms;android-37.2" "build-tools;37.0.0"
+          yes | sdkmanager --licenses >/dev/null || true
+
+      - name: Point Gradle at the SDK
+        run: printf 'sdk.dir=%s\n' "$ANDROID_SDK_ROOT" > local.properties
+
+      - name: Decode release keystore
+        working-directory: ${{ github.workspace }}
+        env:
+          TRAIL_KEYSTORE_BASE64: ${{ secrets.TRAIL_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$TRAIL_KEYSTORE_BASE64" ]; then
+            echo "GitHub secret TRAIL_KEYSTORE_BASE64 is empty."
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$TRAIL_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/trail-release.jks"
+
+      - name: Assemble signed release
+        env:
+          TRAIL_KEYSTORE_FILE: ${{ runner.temp }}/trail-release.jks
+          TRAIL_KEYSTORE_PASSWORD: ${{ secrets.TRAIL_KEYSTORE_PASSWORD }}
+          TRAIL_KEY_ALIAS: ${{ secrets.TRAIL_KEY_ALIAS }}
+          TRAIL_KEY_PASSWORD: ${{ secrets.TRAIL_KEY_PASSWORD }}
+        run: ./gradlew :app:assembleRelease --stacktrace
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: trail-release-apk
+          path: trail/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
