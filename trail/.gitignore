@@ -1,0 +1,43 @@
+# Gradle and Android build outputs
+.gradle/
+build/
+**/build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.ap_
+*.aab
+output-metadata.json
+
+# Local SDK location. Never commit a machine-specific path.
+local.properties
+**/local.properties
+
+# Signing material
+*.jks
+*.keystore
+keystore.properties
+*.keystore.properties
+
+# Google / Firebase config. Trail does not use these; keep them untracked if added.
+google-services.json
+**/google-services.json
+google-services.json.*
+
+# Secrets and environment files
+.env
+.env.*
+*.env
+secrets.properties
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# Crash and profiler dumps
+*.hprof
+
+# osmdroid tile cache if a developer runs the app from this tree
+osmdroid/
